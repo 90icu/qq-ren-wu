@@ -1,0 +1,4 @@
+uiautomator2
+opencv-python
+pillow
+loguru
