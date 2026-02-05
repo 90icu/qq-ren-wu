@@ -6,6 +6,8 @@ import numpy as np
 from loguru import logger
 import os
 import importlib
+import e_wai_huo_yue
+
 
 # 配置 Loguru 格式
 # 注意：如果在 gui_main.py 中运行，这里的配置会被覆盖
@@ -27,6 +29,7 @@ class BotCore:
         self.d = None
         self.stop_event = None
         self.image_callback = image_callback
+        self.current_task_skipped = False # 标记当前任务是否因已完成而跳过
 
     def register_stop_event(self, event):
         """
@@ -153,122 +156,9 @@ class BotCore:
         """
         公共步骤：点击头像 -> 等级 -> 更多任务 -> 额外活跃
         返回 True 表示成功进入，False 表示失败
+        逻辑已移至 e_wai_huo_yue.navigate
         """
-        prefix = "【额外活跃】"
-        logger.info(f"开始执行公共步骤:{prefix}")
-
-        # 0. 检查是否已在目标页面
-        # 通过检测是否存在该页面特有的任务入口文本来判断
-        # 注意：由于页面可能发生滚动，需要检查多个位置的标志性文本
-        indicators = [
-            "额外活跃", # 页面标题或tab
-            "发布一条空间说说", 
-            "使用AI妙绘", 
-            "福利社", 
-            "盲盒签", 
-            "点赞一条好友动态", 
-            "浏览十条空间好友动态", 
-            "登录经典农场小游戏", 
-            "去日签卡打一次卡", 
-            "去天天领福利", 
-            "免费小说", 
-            "去QQ音乐简洁版听歌", 
-            "使用金币兑换等级加速"
-        ]
-        
-        is_already_on_page = False
-        for indicator in indicators:
-            if self.d(textContains=indicator).exists:
-                logger.info(f"{prefix} 检测到页面包含 '{indicator}'，判断已在额外活跃页面")
-                is_already_on_page = True
-                break
-                
-        if is_already_on_page:
-            logger.info(f"{prefix}检测到已在额外活跃页面，跳过导航")
-            return True
-        
-        # 1. 点击左上角头像 (带重试机制)
-        logger.info(f"{prefix} 点击左上角头像")
-        
-        # 强制等待主页加载完成
-        try:
-            self.d(resourceId="com.tencent.mobileqq:id/conversation_head").wait(timeout=10)
-        except Exception:
-            if not self.check_alive(): return False
-
-        sidebar_opened = False
-        # 尝试最多3次点击头像以打开侧边栏
-        for attempt in range(3):
-            # 执行点击
-            if self.d(resourceId="com.tencent.mobileqq:id/conversation_head").exists:
-                self.d(resourceId="com.tencent.mobileqq:id/conversation_head").click()
-            elif self.d(descriptionContains="帐户及设置").exists:
-                self.d(descriptionContains="帐户及设置").click()
-            else:
-                # 盲点
-                self.d.click(50, 100)
-            
-            # 等待侧边栏动画
-            time.sleep(2.0)
-            
-            # 检查侧边栏是否已打开 (检测等级图标)
-            # 快速检测，不需要等待太久
-            if self.d(textContains="LV").exists or self.d(descriptionContains="等级").exists or self.d(resourceId="com.tencent.mobileqq:id/my_level").exists:
-                sidebar_opened = True
-                logger.info(f"{prefix} 侧边栏已打开")
-                break
-            
-            logger.warning(f"{prefix} 侧边栏似乎未打开 (第 {attempt+1} 次尝试)，尝试重新点击头像")
-            
-        if not sidebar_opened:
-             if not self.check_alive(): return False
-             logger.error(f"{prefix} 多次尝试后无法打开侧边栏")
-             # 尝试截图保存现场 (可选)
-             return False
-        
-        # 2. 点击等级图标
-        logger.info(f"{prefix} 点击等级图标")
-        if not self.click_element(text_contains="LV", fallback_id="com.tencent.mobileqq:id/my_level", desc_contains="等级", prefix=prefix):
-             if not self.check_alive(): return False
-             logger.error(f"{prefix} 无法找到侧边栏等级图标")
-             return False
-
-        # 3. 再次点击等级图标 (进入我的等级页)
-        logger.info(f"{prefix} 再次点击等级图标")
-        if self.d(text="更多任务").wait(timeout=5):
-            logger.info(f"{prefix} 已直接检测到'更多任务'，跳过二次点击检测")
-        else:
-            if not self.check_alive(): return False
-            self.click_element(text_contains="LV", desc_contains="等级", prefix=prefix)
-
-
-        if not self.check_alive(): return False
-
-        # 4. 点击'更多任务'
-        logger.info(f"{prefix} 点击'更多任务'")
-        
-        found_more = False
-        if self.click_image_template("更多任务.png", threshold=0.7, prefix=prefix):
-            found_more = True
-        else:
-             if not self.check_alive(): return False
-             logger.error(f"{prefix} 未找到 '更多任务' 按钮")
-             # 这里不返回 False，尝试继续，因为有时候可能已经在页面里了
-             # 但为了稳健，如果真的没找到且不在目标页，后面会失败
-        
-        logger.info(f"{prefix} 等待页面加载 (5s)")
-        time.sleep(5)
-        if not self.check_alive(): return False
-
-        # 5. 点击 '额外活跃'
-        logger.info(f"{prefix} 点击 '额外活跃'")
-        if self.click_element(text_contains="额外活跃", timeout=10, prefix=prefix):
-            logger.info(f"{prefix} 成功点击 '额外活跃'")
-            return True
-        else:
-            if not self.check_alive(): return False
-            logger.error(f"{prefix} 未找到 '额外活跃' 入口")
-            return False
+        return e_wai_huo_yue.navigate(self)
 
     def get_task_list(self):
         """
@@ -276,7 +166,7 @@ class BotCore:
         返回: list of (task_name, module_name)
         """
         return [
-            ("额外活跃", "e_wai_huo_yue"),
+            # ("额外活跃", "e_wai_huo_yue"), # 移除：作为公共模块，不作为独立任务显示
             ("福利社", "fu_li_she"),
             ("发布说说", "fa_bu_shuo_shuo"),
             ("AI妙绘", "ai_miao_hui"),
@@ -318,30 +208,26 @@ class BotCore:
             return
 
         last_task_name = None
-        
+        last_task_skipped = False
+
         # 定义额外活跃任务集合
         extra_active_subtasks = [
             "福利社", "发布说说", "AI妙绘", "盲盒签", "点赞说说", 
             "浏览空间", "登陆农场", "日签打卡", "天天福利", 
             "免费小说", "QQ音乐简洁", "金币加速"
         ]
-
+        
         for module, task_name in tasks_to_run:
             if not self.check_alive(): break
             
             # 判断是否需要重置应用状态
             should_reset = True
-            if target_task_name is None: # 一键执行全部任务模式
-                # 如果上一个任务是“额外活跃”入口，或者上一个任务也是额外活跃子任务之一
-                # 且当前任务也是额外活跃子任务之一
-                # 则跳过重置
-                is_last_extra = (last_task_name == "额外活跃" or last_task_name in extra_active_subtasks)
-                is_curr_extra = (task_name in extra_active_subtasks)
-                
-                if is_last_extra and is_curr_extra:
-                    should_reset = False
-                    logger.info(f"由于上一个任务【{last_task_name}】和当前任务【{task_name}】均属于额外活跃系列，跳过重置应用状态")
-
+            
+            # 智能重置逻辑：只有当上一个任务是“已完成跳过”状态，且都在额外活跃系列时，才不重启
+            if last_task_skipped and last_task_name in extra_active_subtasks and task_name in extra_active_subtasks:
+                should_reset = False
+                logger.info(f"任务【{last_task_name}】已跳过，保持当前页面状态继续执行【{task_name}】")
+            
             if should_reset:
                 # 每个任务执行前重置应用状态
                 if not self.reset_app_state():
@@ -350,9 +236,14 @@ class BotCore:
             
             # 使用 lambda 包装，以便在 run_task_with_retry 中调用
             task_func = lambda: module.execute(self)
+            
+            # 重置当前任务的跳过状态
+            self.current_task_skipped = False
+            
             self.run_task_with_retry(task_func, task_name)
             
             last_task_name = task_name
+            last_task_skipped = self.current_task_skipped
             
         logger.info("所有任务流程结束")
 
@@ -372,7 +263,8 @@ class BotCore:
 
         # 尝试执行具体任务
         if task_func():
-            logger.info(f"【{task_name}】任务完成")
+            # logger.info(f"【{task_name}】任务完成") # 避免重复打印，具体任务脚本中已包含
+            pass
         else:
             logger.warning(f"【{task_name}】任务执行失败，尝试重启 QQ")
             self.restart_qq()
@@ -424,6 +316,7 @@ class BotCore:
                     if abs(cy - task_cy) < 60: 
                         if bounds['left'] >= task_bounds['right'] - 50: 
                             logger.info(f"检测到任务【{task_text_contains}】已完成")
+                            self.current_task_skipped = True # 标记任务已跳过
                             return True
                 except Exception:
                     continue
@@ -531,7 +424,7 @@ class BotCore:
             
             # 每5秒打印一次警告日志
             if time.time() - last_log_time >= 5.0:
-                logger.warning(f"{prefix} 图像识别未找到目标 | 模板: {template_name} | 最高相似度: {similarity:.2f} (阈值: {threshold})")
+                # logger.warning(f"{prefix} 图像识别未找到目标 | 模板: {template_name} | 最高相似度: {similarity:.2f} (阈值: {threshold})")
                 last_log_time = time.time()
                 
             time.sleep(1)

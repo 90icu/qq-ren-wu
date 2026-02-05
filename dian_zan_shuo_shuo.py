@@ -25,11 +25,11 @@ def execute(bot):
 
     time.sleep(3) # 等待加载好友动态页面
 
-    # 2. 循环点赞 (目标: 3次, 超时: 30秒)
-    logger.info("【点赞说说】开始寻找并点赞 (目标: 3个)")
+    # 2. 循环点赞 (目标: 1次, 超时: 30秒)
+    logger.info("【点赞说说】开始寻找并点赞 (目标: 1个)")
     
     like_count = 0
-    target_count = 3
+    target_count = 1
     timeout = 30
     start_time = time.time()
     
@@ -50,7 +50,7 @@ def execute(bot):
             time.sleep(1) # 等待UI刷新
         else:
             # 当前屏幕没找到，滑动
-            logger.info("【点赞说说】当前屏未找到'未点赞'图标，大幅向下滑动")
+            logger.info("【点赞说说】当前屏未找到'未点赞'图标，向下滑动")
             bot.d.swipe_ext("up", scale=0.9)
             time.sleep(1.5) # 等待加载
 

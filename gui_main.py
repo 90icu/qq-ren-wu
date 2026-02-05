@@ -134,8 +134,7 @@ class AutomationGUI:
         self.btn_launch = ttk.Button(toolbar, text="启动模拟器", command=self.launch_only_selected, state=tk.DISABLED)
         self.btn_launch.pack(side=tk.LEFT, padx=5)
 
-        self.btn_extra_active = ttk.Button(toolbar, text="额外活跃", command=lambda: self.run_specific_task_click("额外活跃"), state=tk.DISABLED)
-        self.btn_extra_active.pack(side=tk.LEFT, padx=5)
+        # self.btn_extra_active 已移除，作为公共步骤
 
         self.btn_start = ttk.Button(toolbar, text="一键执行全部任务", command=self.start_selected, state=tk.DISABLED)
         self.btn_start.pack(side=tk.LEFT, padx=5, ipadx=20)
@@ -354,11 +353,11 @@ class AutomationGUI:
         if selected_items:
             self.btn_start.config(state=tk.NORMAL)
             self.btn_launch.config(state=tk.NORMAL)
-            self.btn_extra_active.config(state=tk.NORMAL)
+            # self.btn_extra_active.config(state=tk.NORMAL) # 已移除
         else:
             self.btn_start.config(state=tk.DISABLED)
             self.btn_launch.config(state=tk.DISABLED)
-            self.btn_extra_active.config(state=tk.DISABLED)
+            # self.btn_extra_active.config(state=tk.DISABLED) # 已移除
 
     def refresh_list_loop(self):
         """
