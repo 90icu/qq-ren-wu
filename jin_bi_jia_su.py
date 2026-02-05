@@ -38,13 +38,13 @@ def execute(bot):
                  clicked_allow = True
         
         if clicked_allow:
-            logger.info("【金币加速】进入等待阶段，持续检测 '跳过.png' 或 '立即兑换.png' (限时20秒)...")
+            logger.info("【金币加速】进入等待阶段，持续检测 '跳过.png' 或 '立即兑换.png' (限时30秒)...")
             
             start_wait = time.time()
             clicked_skip = False
             clicked_exchange = False
             
-            while time.time() - start_wait < 20:
+            while time.time() - start_wait < 30:
                 # 1. 检测跳过
                 is_found_skip, sim_skip = bot.click_image_template("跳过.png", threshold=0.8, prefix="【金币加速】", suppress_warning=True, return_details=True)
                 if is_found_skip:
@@ -59,16 +59,23 @@ def execute(bot):
                      clicked_skip = True
                      clicked_exchange = True
                      break
+
+                # 3. 检测观看广告领金币
+                is_found_ad, sim_ad = bot.click_image_template("观看广告领金币.png", threshold=0.8, prefix="【金币加速】", suppress_warning=True, return_details=True)
+                if is_found_ad:
+                     logger.info(f"【金币加速】检测到并点击了 '观看广告领金币.png' (相似度: {sim_ad:.2f})，提前结束等待")
+                     clicked_skip = True
+                     break
                 
                 # 每隔 3 秒打印一次正在检测的日志
                 elapsed = time.time() - start_wait
                 if int(elapsed) % 3 == 0 and int(elapsed) > 0:
-                     logger.info(f"【金币加速】正在后台监测 '跳过.png'/{sim_skip:.2f} 或 '立即兑换.png'/{sim_exchange:.2f} ...")
+                     logger.info(f"【金币加速】正在后台监测 '跳过.png'/{sim_skip:.2f} 或 '立即兑换.png'/{sim_exchange:.2f} 或 '观看广告领金币.png'/{sim_ad:.2f} ...")
                      
                 time.sleep(1)
             
             if not clicked_skip:
-                logger.info("【金币加速】20秒内未检测到目标图片，等待结束")
+                logger.info("【金币加速】30秒内未检测到目标图片，等待结束")
             
             
             logger.info("【金币加速】任务完成")

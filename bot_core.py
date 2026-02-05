@@ -22,6 +22,10 @@ if __name__ == "__main__":
 
 import subprocess
 
+class DeviceDisconnectedError(Exception):
+    """设备断开连接异常"""
+    pass
+
 class BotCore:
     def __init__(self, serial, package_name="com.tencent.mobileqq", image_callback=None):
         self.serial = serial
@@ -73,6 +77,29 @@ class BotCore:
             logger.error("设备未连接")
             return False
 
+    def ensure_app_started(self):
+        """
+        确保应用已启动（如果未在前台则拉起，不强制等待主页）
+        """
+        try:
+            current = self.d.app_current()
+            if current['package'] == self.package_name:
+                return True
+            
+            logger.info(f"应用不在前台 (当前: {current.get('package')})，正在拉起...")
+            self.d.app_start(self.package_name)
+            time.sleep(5)
+            return True
+        except Exception as e:
+            logger.warning(f"检查应用状态失败: {e}")
+            # 尝试盲启动
+            try:
+                self.d.app_start(self.package_name)
+                time.sleep(5)
+                return True
+            except:
+                return False
+
     def handle_popup(self):
         logger.info("检查弹窗")
         allow_texts = ["允许", "同意", "确定", "始终允许", "仅在使用中允许"]
@@ -94,19 +121,29 @@ class BotCore:
             # 杀掉相关进程
             logger.info(f"{prefix} 正在关闭 QQ...")
             self.d.app_stop("com.tencent.mobileqq")
+            time.sleep(2)
             logger.info(f"{prefix} 正在关闭 波点音乐...")
             self.d.app_stop("cn.wenyu.bodian")
+            time.sleep(2)
             logger.info(f"{prefix} 正在关闭 QQ音乐...")
             self.d.app_stop("com.tencent.qqmusic")
-            
             time.sleep(2)
+            
+            # 增加等待时间，避免立即启动导致黑屏
+            time.sleep(10)
             
             # 启动 QQ
             logger.info(f"{prefix} 正在启动 QQ...")
             self.d.app_start("com.tencent.mobileqq")
             
+            # 确保屏幕是亮着的
+            try:
+                self.d.screen_on()
+            except:
+                pass
+            
             # 等待启动完成
-            time.sleep(10)
+            time.sleep(20)
             self.handle_popup()
             return True
         except Exception as e:
@@ -175,10 +212,10 @@ class BotCore:
             ("浏览空间", "liu_lan_kong_jian"),
             ("登陆农场", "deng_lu_nong_chang"),
             ("日签打卡", "ri_qian_da_ka"),
+            ("金币加速", "jin_bi_jia_su"),
             ("天天福利", "tian_tian_fu_li"),
             ("免费小说", "mian_fei_xiao_shuo"),
-            ("QQ音乐简洁", "qq_yin_yue_jian_jie_ban"),
-            ("金币加速", "jin_bi_jia_su")
+            ("QQ音乐简洁", "qq_yin_yue_jian_jie_ban")
             ]
 
     def perform_task(self, target_task_name=None):
@@ -207,45 +244,84 @@ class BotCore:
             logger.warning("没有可执行的任务")
             return
 
-        last_task_name = None
         last_task_skipped = False
 
-        # 定义额外活跃任务集合
-        extra_active_subtasks = [
-            "福利社", "发布说说", "AI妙绘", "盲盒签", "点赞说说", 
-            "浏览空间", "登陆农场", "日签打卡", "天天福利", 
-            "免费小说", "QQ音乐简洁", "金币加速"
-        ]
+        # 定义额外活跃任务集合及对应的任务文本 (用于检测是否已完成)
+        extra_active_tasks_map = {
+            "福利社": "福利社",
+            "发布说说": "发布一条空间说说",
+            "AI妙绘": "使用AI妙绘",
+            "盲盒签": "参与盲盒签并成功发布至空间",
+            "点赞说说": "点赞一条好友动态",
+            "浏览空间": "浏览十条空间好友动态",
+            "登陆农场": "登录经典农场小游戏",
+            "日签打卡": "去日签卡打一次卡",
+            "天天福利": "去天天领福利",
+            "免费小说": "去免费小说看任一本书",
+            "QQ音乐简洁": "去QQ音乐简洁版听歌",
+            "金币加速": "使用金币兑换等级加速"
+        }
         
-        for module, task_name in tasks_to_run:
-            if not self.check_alive(): break
-            
-            # 判断是否需要重置应用状态
-            should_reset = True
-            
-            # 智能重置逻辑：只有当上一个任务是“已完成跳过”状态，且都在额外活跃系列时，才不重启
-            if last_task_skipped and last_task_name in extra_active_subtasks and task_name in extra_active_subtasks:
-                should_reset = False
-                logger.info(f"任务【{last_task_name}】已跳过，保持当前页面状态继续执行【{task_name}】")
-            
-            if should_reset:
-                # 每个任务执行前重置应用状态
-                if not self.reset_app_state():
-                    logger.error(f"【{task_name}】重置应用状态失败，跳过此任务")
+        try:
+            for module, task_name in tasks_to_run:
+                if not self.check_alive(): 
+                    raise DeviceDisconnectedError("设备连接已断开")
+                
+                should_reset = True
+                current_task_is_completed = False
+
+                # 1. 尝试检测任务是否已完成 (仅针对额外活跃系列)
+                # 策略：如果上一个任务已跳过（意味着我们在列表页），则尝试直接检查当前任务是否也已完成
+                # 避免在上一个任务刚执行完（状态未重置）的情况下强行导航导致错误
+                if last_task_skipped and task_name in extra_active_tasks_map:
+                    task_text = extra_active_tasks_map[task_name]
+                    
+                    # 确保应用已启动，否则无法导航
+                    self.ensure_app_started()
+
+                    # 尝试进入额外活跃页面 (如果已经在页面上，navigate 会很快返回 True)
+                    # 注意：navigate_to_extra_active 可能会因为找不到入口而返回 False，此时需要重置
+                    if self.navigate_to_extra_active():
+                        # 滚动查找任务文本，并在滚动过程中检查是否已完成
+                        if self.scroll_and_check_completed(task_text):
+                            logger.info(f"【{task_name}】检测到已完成，跳过执行且不重启")
+                            current_task_is_completed = True
+                            should_reset = False
+                
+                # 2. 如果任务已完成，直接跳过本次循环的后续步骤
+                if current_task_is_completed:
+                    last_task_skipped = True
                     continue
+
+                # 3. 如果未完成，决定是否重置
+                # 如果上一个任务是跳过的（说明我们在列表页），且当前任务也是额外活跃系列，则不重置
+                if last_task_skipped and task_name in extra_active_tasks_map:
+                    should_reset = False
+                    logger.info(f"因上一个任务已跳过，保持当前状态执行【{task_name}】")
+                
+                if should_reset:
+                    # 每个任务执行前重置应用状态
+                    if not self.reset_app_state():
+                        logger.error(f"【{task_name}】重置应用状态失败，跳过此任务")
+                        last_task_skipped = False
+                        continue
+                
+                # 使用 lambda 包装，以便在 run_task_with_retry 中调用
+                task_func = lambda: module.execute(self)
+                
+                # 重置当前任务的跳过状态
+                self.current_task_skipped = False
+                
+                self.run_task_with_retry(task_func, task_name)
+                
+                # 更新 last_task_skipped 状态，依据任务执行过程中是否标记了 skipped
+                last_task_skipped = self.current_task_skipped
+                
+            logger.info("所有任务流程结束")
             
-            # 使用 lambda 包装，以便在 run_task_with_retry 中调用
-            task_func = lambda: module.execute(self)
-            
-            # 重置当前任务的跳过状态
-            self.current_task_skipped = False
-            
-            self.run_task_with_retry(task_func, task_name)
-            
-            last_task_name = task_name
-            last_task_skipped = self.current_task_skipped
-            
-        logger.info("所有任务流程结束")
+        except DeviceDisconnectedError:
+            logger.error("任务流程因设备断开而终止")
+            return
 
     def run_task_with_retry(self, task_func, task_name):
         """
@@ -315,7 +391,7 @@ class BotCore:
                     # 2. “已完成”在任务文本的右侧 (left >= task_right - buffer)
                     if abs(cy - task_cy) < 60: 
                         if bounds['left'] >= task_bounds['right'] - 50: 
-                            logger.info(f"检测到任务【{task_text_contains}】已完成")
+                            logger.info(f"======== 检测到任务【{task_text_contains}】已完成 ========")
                             self.current_task_skipped = True # 标记任务已跳过
                             return True
                 except Exception:
@@ -414,7 +490,7 @@ class BotCore:
         while time.time() - start_time < timeout:
             if not self.check_alive():
                 logger.error(f"{prefix} 设备连接已断开，停止等待")
-                return False
+                raise DeviceDisconnectedError("设备连接已断开")
             
             # 使用 return_details=True 获取相似度，同时 suppress_warning=True 禁止内部打印
             success, similarity = self.click_image_template(template_name, threshold=threshold, prefix=prefix, suppress_warning=True, return_details=True)
@@ -436,7 +512,7 @@ class BotCore:
         """
         if not self.check_alive():
              logger.error(f"{prefix} 设备连接已断开，停止操作")
-             return False
+             raise DeviceDisconnectedError("设备连接已断开")
 
         # 临时调整隐式等待，避免每个判断都等很久
         self.d.implicitly_wait(0.5)
@@ -491,15 +567,16 @@ class BotCore:
             logger.error(f"读取图片失败 {path}: {e}")
             return None
 
-    def click_image_template(self, template_name, threshold=0.7, prefix="", suppress_warning=False, return_details=False, action="click"):
+    def click_image_template(self, template_name, threshold=0.7, prefix="", suppress_warning=False, return_details=False, action="click", ignore_color=False):
         """
         基于图像识别点击元素 (OpenCV)，支持多尺度匹配
         template_name: 图片文件名 (位于 assets 目录下)
         action: "click" (默认), "check" (只检测), "get_rect" (返回 (x,y,w,h))
+        ignore_color: 是否忽略颜色校验 (默认为 False)
         """
         if not self.check_alive():
             logger.error("设备连接已断开，停止图像识别")
-            return False
+            raise DeviceDisconnectedError("设备连接已断开")
 
         # 确保路径正确，适配 PyInstaller
         template_path = self.get_resource_path(os.path.join("assets", template_name))
@@ -566,7 +643,7 @@ class BotCore:
                 color_match = True
                 color_diff = 0.0
                 
-                if max_val >= threshold:
+                if max_val >= threshold and not ignore_color:
                     try:
                         # 读取彩色模板
                         template_color = self.read_image_safe(template_path, cv2.IMREAD_COLOR)
@@ -624,7 +701,8 @@ class BotCore:
                     return True
                 else:
                     if not suppress_warning:
-                        logger.warning(f"图像识别未找到目标 | 模板: {template_name} | 最高相似度: {max_val:.2f} (阈值: {threshold})")
+                         pass
+                         # logger.warning(f"图像识别未找到目标 | 模板: {template_name} | 最高相似度: {max_val:.2f} (阈值: {threshold})")
                     if return_details: return False, max_val
             else:
                 # 调用图像识别回调更新 UI (未找到情况)
@@ -635,7 +713,8 @@ class BotCore:
                         logger.error(f"图像识别回调异常: {e}")
 
                 if not suppress_warning:
-                    logger.warning(f"图像识别完全失败")
+                    pass
+                    # logger.warning(f"图像识别完全失败")
                 if return_details: return False, 0.0
 
         except Exception as e:
@@ -738,44 +817,122 @@ class BotCore:
             logger.error(f"{prefix} 点击右上角失败: {e}")
             return False
 
-    def scroll_and_find(self, text=None, text_contains=None, max_swipes=10, prefix=""):
+    def scroll_and_check_completed(self, task_text, max_swipes=10):
         """
-        快速滚动查找，到底自动停止
+        滚动查找指定任务，并检查是否标记为“已完成”
+        如果在任意位置找到任务且已完成，返回 True
         """
-        logger.info(f"{prefix} 滚动查找: {text or text_contains}")
-        # 禁用隐式等待以提高滚动检测速度
+        logger.info(f"滚动检查任务状态: {task_text}")
         self.d.implicitly_wait(0.1)
         
         last_hierarchy = None
+        found_completed = False
 
         for i in range(max_swipes):
             if not self.check_alive():
-                logger.error("设备连接已断开，停止滚动")
-                self.d.implicitly_wait(10.0)
-                return False
+                raise DeviceDisconnectedError("设备连接已断开")
 
-            if text and self.d(text=text).exists:
-                self.d.implicitly_wait(10.0)
-                return True
-            if text_contains and self.d(textContains=text_contains).exists:
-                self.d.implicitly_wait(10.0)
-                return True
+            # 检查当前页面是否有该任务且已完成
+            if self.is_task_completed(task_text):
+                found_completed = True
+                break
             
-            # 记录当前页面结构（简易版：只对比dump内容，虽然慢但准确）
-            # 为了性能，也可以只对比屏幕上所有 TextView 的内容集合
-            # 这里先尝试 dump，如果太慢再优化
+            # 如果没找到任务文本，或者找到了但没完成（is_task_completed 返回 False）
+            # 我们需要决定是否继续滚动。
+            # 只有当屏幕上完全没有该任务文本时，才需要滚动去寻找。
+            # 如果屏幕上有任务文本但未显示完成，说明还没做，直接返回 False 即可（不需要再往下找了，通常任务只出现一次）
+            
+            if self.d(textContains=task_text).exists:
+                # 任务在屏幕上，但 is_task_completed 返回 False，说明未完成
+                # 双重确认：有时 OCR 或 UI 树更新滞后，稍微等一下再查一次
+                # time.sleep(0.5)
+                # if self.is_task_completed(task_text):
+                #     found_completed = True
+                #     break
+                logger.info(f"找到任务【{task_text}】但未显示完成")
+                break
+            
+            # 记录页面结构
             current_hierarchy = self.d.dump_hierarchy()
+            if last_hierarchy and current_hierarchy == last_hierarchy:
+                break
+            last_hierarchy = current_hierarchy
+
+            # 向上滑动
+            self.d.swipe_ext("up", scale=0.6)
+            time.sleep(0.8)
             
+        self.d.implicitly_wait(10.0)
+        return found_completed
+
+    def scroll_and_find(self, text=None, text_contains=None, max_swipes=10, prefix=""):
+        """
+        双向滚动查找：先向下查找，如果到底未找到，则向上回滚查找
+        """
+        target = text or text_contains
+        logger.info(f"{prefix} 滚动查找: {target}")
+        # 禁用隐式等待以提高滚动检测速度
+        self.d.implicitly_wait(0.1)
+        
+        # 内部函数：检查是否存在
+        def check_exists():
+            if text and self.d(text=text).exists: return True
+            if text_contains and self.d(textContains=text_contains).exists: return True
+            return False
+
+        if check_exists():
+            self.d.implicitly_wait(10.0)
+            return True
+
+        # Phase 1: 向下查找 (Swipe Up)
+        logger.info(f"{prefix} 尝试向下查找...")
+        last_hierarchy = None
+        swiped_down_count = 0
+        
+        for i in range(max_swipes):
+            if not self.check_alive():
+                self.d.implicitly_wait(10.0)
+                raise DeviceDisconnectedError("设备连接已断开")
+
+            current_hierarchy = self.d.dump_hierarchy()
             if last_hierarchy and current_hierarchy == last_hierarchy:
                 logger.warning("页面未发生变化，可能已到底部")
                 break
-                
             last_hierarchy = current_hierarchy
 
-            # 快速滑动
             self.d.swipe_ext("up", scale=0.6)
-            # 短暂 sleep 等待滚动动画结束
+            swiped_down_count += 1
             time.sleep(0.8)
+            
+            if check_exists():
+                self.d.implicitly_wait(10.0)
+                return True
+            
+        # Phase 2: 如果向下没找到，尝试向上回滚查找 (Swipe Down)
+        # 尤其适用于列表已经滚动到底部，而目标在顶部的情况
+        logger.info(f"{prefix} 向下未找到，尝试向上回滚查找...")
+        last_hierarchy = None
+        
+        # 向上滑动的次数：至少 max_swipes，或者更多以确保能回到顶部
+        up_swipes = max_swipes + 5
+        
+        for i in range(up_swipes):
+            if not self.check_alive():
+                self.d.implicitly_wait(10.0)
+                raise DeviceDisconnectedError("设备连接已断开")
+                
+            current_hierarchy = self.d.dump_hierarchy()
+            if last_hierarchy and current_hierarchy == last_hierarchy:
+                logger.info("页面未发生变化，可能已到顶部")
+                break
+            last_hierarchy = current_hierarchy
+            
+            self.d.swipe_ext("down", scale=0.6)
+            time.sleep(0.8)
+            
+            if check_exists():
+                self.d.implicitly_wait(10.0)
+                return True
             
         self.d.implicitly_wait(10.0)
         return False

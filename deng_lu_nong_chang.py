@@ -39,8 +39,8 @@ def execute(bot):
         if not bot.check_alive(): return False
         
         # 识别图片，如果存在说明还在加载
-        is_loading_1, _ = bot.click_image_template("QQ农场-加载中.png", action="check", suppress_warning=True, return_details=True, prefix="【登陆农场】")
-        is_loading_2, _ = bot.click_image_template("QQ农场-精彩体验马上开始.png", action="check", suppress_warning=True, return_details=True, prefix="【登陆农场】")
+        is_loading_1, _ = bot.click_image_template("QQ农场-加载中.png", action="check", suppress_warning=True, return_details=True, prefix="【登陆农场】", ignore_color=True)
+        is_loading_2, _ = bot.click_image_template("QQ农场-精彩体验马上开始.png", action="check", suppress_warning=True, return_details=True, prefix="【登陆农场】", ignore_color=True)
         
         if not is_loading_1 and not is_loading_2:
             logger.info("【登陆农场】加载图片消失，认为加载完成，额外等待 10 秒...")

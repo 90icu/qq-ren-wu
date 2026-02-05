@@ -50,7 +50,24 @@ def execute(bot):
         # 每次滑动前检查是否有 "立即签到.png"
         if bot.click_image_template("立即签到.png", prefix="【天天福利】"):
             logger.info("【天天福利】识别到并点击了 '立即签到.png'")
-        
+            # 识别到并点击之后，等待20秒，上下滑动保持屏幕不熄灭即可，等结束
+            logger.info("【天天福利】点击签到后，继续保持活跃 20 秒...")
+            # 重置开始时间，确保至少再执行 20 秒
+            # 或者直接在这里执行一个 20 秒的循环
+            sub_start = time.time()
+            while time.time() - sub_start < 20:
+                if not bot.check_alive(): return False
+                
+                if random.random() < 0.7:
+                    # logger.info("【天天福利】(已签到) 上滑保持活跃...")
+                    bot.d.swipe(0.5, 0.8, 0.5, 0.3, duration=0.5)
+                else:
+                    # logger.info("【天天福利】(已签到) 下滑保持活跃...")
+                    bot.d.swipe(0.5, 0.3, 0.5, 0.8, duration=0.5)
+                time.sleep(random.uniform(2, 4))
+            
+            break # 结束外层循环，任务完成
+
         # 随机上滑或下滑，模拟浏览
         # 通常是上滑(查看下方内容)多一些
         if random.random() < 0.7:

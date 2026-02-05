@@ -517,11 +517,27 @@ class AutomationGUI:
 
     def _launch_emulator_thread(self, index):
         try:
-            logger.info(f"正在启动模拟器 [{index}]...")
+            # 尝试获取标题
+            title = f"[{index}]"
+            try:
+                # 从 treeview 中查找标题 (如果在主线程可能更安全，但这里是只读)
+                # 或者调用 emu_mgr 获取
+                # 为了简单，直接调用 list2 获取最新标题
+                output = self.emu_mgr.execute_cmd(["dnconsole", "list2"])
+                if output:
+                    for line in output.strip().split('\n'):
+                        parts = line.split(',')
+                        if len(parts) > 1 and str(parts[0]) == str(index):
+                            title = f"[{index}:{parts[1]}]"
+                            break
+            except:
+                pass
+
+            logger.info(f"正在启动模拟器 {title}...")
             if self.emu_mgr.launch_emulator(index):
-                logger.info(f"模拟器 [{index}] 启动指令已发送")
+                logger.info(f"模拟器 {title} 启动指令已发送")
             else:
-                logger.error(f"模拟器 [{index}] 启动失败")
+                logger.error(f"模拟器 {title} 启动失败")
         except Exception as e:
             logger.error(f"启动模拟器 [{index}] 异常: {e}")
 

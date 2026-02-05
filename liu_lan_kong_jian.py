@@ -34,14 +34,14 @@ def execute(bot):
     time.sleep(5) 
     
     # 2. 检测“前往领取查看.png” (只检测不点击)
-    logger.info("【浏览空间】检测是否已完成 (前往领取查看.png)")
-    success, _ = bot.click_image_template("前往领取查看.png", threshold=0.8, prefix="【浏览空间】", return_details=True, action="check")
+    # logger.info("【浏览空间】检测是否已完成 (前往领取查看.png)")
+    # success, _ = bot.click_image_template("前往领取查看.png", threshold=0.8, prefix="【浏览空间】", return_details=True, action="check")
     
-    if success:
-        logger.info("【浏览空间】检测到 '前往领取查看'，任务已完成，跳过执行")
-        return True
+    # if success:
+    #     logger.info("【浏览空间】检测到 '前往领取查看'，任务已完成，跳过执行")
+    #     return True
         
-    logger.info("【浏览空间】未检测到完成标志，开始执行任务")
+    # logger.info("【浏览空间】未检测到完成标志，开始执行任务")
 
     # 3. 往下一直快速滚动，持续20秒
     logger.info("【浏览空间】开始快速滚动 (持续20秒)")
