@@ -27,13 +27,41 @@ class DeviceDisconnectedError(Exception):
     pass
 
 class BotCore:
-    def __init__(self, serial, package_name="com.tencent.mobileqq", image_callback=None):
+    def __init__(self, serial, package_name="com.tencent.mobileqq", image_callback=None, task_status_callback=None):
         self.serial = serial
         self.package_name = package_name
         self.d = None
         self.stop_event = None
         self.image_callback = image_callback
+        self.task_status_callback = task_status_callback
         self.current_task_skipped = False # 标记当前任务是否因已完成而跳过
+
+        # 定义额外活跃任务集合及对应的任务文本 (用于检测是否已完成)
+        self.extra_active_tasks_map = {
+            "福利社": "福利社",
+            "发布说说": "发布一条空间说说",
+            "AI妙绘": "使用AI妙绘",
+            "盲盒签": "参与盲盒签并成功发布至空间",
+            "点赞说说": "点赞一条好友动态",
+            "浏览空间": "浏览十条空间好友动态",
+            "登陆农场": "登录经典农场小游戏",
+            "日签打卡": "去日签卡打一次卡",
+            "天天福利": "去天天领福利",
+            "免费小说": "去免费小说看任一本书",
+            "QQ音乐简洁": "去QQ音乐简洁版听歌",
+            "金币加速": "使用金币兑换等级加速"
+        }
+
+    def update_task_status(self, task_name, status):
+        """
+        更新任务状态
+        status: pending, running, success, failed
+        """
+        if self.task_status_callback:
+            try:
+                self.task_status_callback(task_name, status)
+            except Exception as e:
+                logger.error(f"更新任务状态回调失败: {e}")
 
     def register_stop_event(self, event):
         """
@@ -130,7 +158,7 @@ class BotCore:
             time.sleep(2)
             
             # 增加等待时间，避免立即启动导致黑屏
-            time.sleep(10)
+            time.sleep(5)
             
             # 启动 QQ
             logger.info(f"{prefix} 正在启动 QQ...")
@@ -245,27 +273,16 @@ class BotCore:
             return
 
         last_task_skipped = False
+        just_restarted = False # 标记是否刚刚重启过 QQ
 
-        # 定义额外活跃任务集合及对应的任务文本 (用于检测是否已完成)
-        extra_active_tasks_map = {
-            "福利社": "福利社",
-            "发布说说": "发布一条空间说说",
-            "AI妙绘": "使用AI妙绘",
-            "盲盒签": "参与盲盒签并成功发布至空间",
-            "点赞说说": "点赞一条好友动态",
-            "浏览空间": "浏览十条空间好友动态",
-            "登陆农场": "登录经典农场小游戏",
-            "日签打卡": "去日签卡打一次卡",
-            "天天福利": "去天天领福利",
-            "免费小说": "去免费小说看任一本书",
-            "QQ音乐简洁": "去QQ音乐简洁版听歌",
-            "金币加速": "使用金币兑换等级加速"
-        }
-        
         try:
             for module, task_name in tasks_to_run:
                 if not self.check_alive(): 
+                    self.update_task_status(task_name, "failed")
                     raise DeviceDisconnectedError("设备连接已断开")
+                
+                # 标记为执行中
+                self.update_task_status(task_name, "running")
                 
                 should_reset = True
                 current_task_is_completed = False
@@ -273,8 +290,8 @@ class BotCore:
                 # 1. 尝试检测任务是否已完成 (仅针对额外活跃系列)
                 # 策略：如果上一个任务已跳过（意味着我们在列表页），则尝试直接检查当前任务是否也已完成
                 # 避免在上一个任务刚执行完（状态未重置）的情况下强行导航导致错误
-                if last_task_skipped and task_name in extra_active_tasks_map:
-                    task_text = extra_active_tasks_map[task_name]
+                if last_task_skipped and task_name in self.extra_active_tasks_map:
+                    task_text = self.extra_active_tasks_map[task_name]
                     
                     # 确保应用已启动，否则无法导航
                     self.ensure_app_started()
@@ -290,20 +307,30 @@ class BotCore:
                 
                 # 2. 如果任务已完成，直接跳过本次循环的后续步骤
                 if current_task_is_completed:
+                    self.update_task_status(task_name, "success")
                     last_task_skipped = True
+                    just_restarted = False # 任务完成了，重置标记
                     continue
 
                 # 3. 如果未完成，决定是否重置
                 # 如果上一个任务是跳过的（说明我们在列表页），且当前任务也是额外活跃系列，则不重置
-                if last_task_skipped and task_name in extra_active_tasks_map:
+                if last_task_skipped and task_name in self.extra_active_tasks_map:
                     should_reset = False
                     logger.info(f"因上一个任务已跳过，保持当前状态执行【{task_name}】")
                 
+                # 如果刚刚重启过 QQ 且处于额外活跃页面（由 run_task_with_retry 保证），则不重置
+                if just_restarted:
+                     should_reset = False
+                     logger.info(f"因刚刚重启过 QQ 并完成了前一个任务，保持当前状态执行【{task_name}】")
+                     just_restarted = False # 使用一次后重置
+
                 if should_reset:
                     # 每个任务执行前重置应用状态
                     if not self.reset_app_state():
                         logger.error(f"【{task_name}】重置应用状态失败，跳过此任务")
+                        self.update_task_status(task_name, "failed")
                         last_task_skipped = False
+                        just_restarted = False
                         continue
                 
                 # 使用 lambda 包装，以便在 run_task_with_retry 中调用
@@ -312,10 +339,20 @@ class BotCore:
                 # 重置当前任务的跳过状态
                 self.current_task_skipped = False
                 
-                self.run_task_with_retry(task_func, task_name)
+                success, restarted = self.run_task_with_retry(task_func, task_name)
+                if success:
+                     self.update_task_status(task_name, "success")
+                else:
+                     self.update_task_status(task_name, "failed")
                 
                 # 更新 last_task_skipped 状态，依据任务执行过程中是否标记了 skipped
                 last_task_skipped = self.current_task_skipped
+                
+                # 更新 just_restarted 状态，供下一个任务判断是否需要重置
+                if restarted:
+                    just_restarted = True
+                else:
+                    just_restarted = False
                 
             logger.info("所有任务流程结束")
             
@@ -326,36 +363,125 @@ class BotCore:
     def run_task_with_retry(self, task_func, task_name):
         """
         执行单个任务，包含公共步骤和重试机制
+        返回 (success, restarted) 元组
+        success: True 表示成功，False 表示失败
+        restarted: True 表示在执行过程中发生了重启 QQ 的操作（且最后处于可用状态）
         """
+        restarted = False
+
         # 尝试执行公共步骤
         if not self.navigate_to_extra_active():
             logger.warning(f"【{task_name}】执行失败，尝试重启 QQ")
             self.restart_qq()
+            restarted = True
             if not self.navigate_to_extra_active():
                 logger.error(f"重启后公共步骤依然失败，跳过任务【{task_name}】")
-                return
+                return False, restarted
 
         logger.info(f"准备执行任务:【{task_name}】")
 
         # 尝试执行具体任务
         if task_func():
             # logger.info(f"【{task_name}】任务完成") # 避免重复打印，具体任务脚本中已包含
-            pass
+            return True, restarted
         else:
             logger.warning(f"【{task_name}】任务执行失败，尝试重启 QQ")
             self.restart_qq()
+            restarted = True
             
             # 重启后再次执行公共步骤
             if self.navigate_to_extra_active():
-                logger.info("重启后公共步骤执行成功，但不重试任务，继续下一个任务")
-                # 原来的重试逻辑已移除
-                # if task_func():
-                #     logger.info(f"【{task_name}】任务重试完成")
-                # else:
-                #     logger.error(f"【{task_name}】任务重试依然失败")
+                logger.info(f"重启后公共步骤执行成功，正在重试任务【{task_name}】...")
+                
+                # 重试任务
+                if task_func():
+                    logger.info(f"【{task_name}】任务重试成功")
+                    return True, restarted
+                else:
+                    logger.error(f"【{task_name}】任务重试依然失败，继续下一个任务")
+                    # 即使失败，因为我们已经重启并导航到了列表页，所以 restarted=True
+                    # 下一个任务可以直接利用这个状态
+                    return False, restarted
             else:
                 logger.error(f"重启后公共步骤执行失败，无法继续")
+                return False, restarted
 
+
+    def refresh_task_progress(self):
+        """
+        清理环境，重启QQ，进入额外活跃，检查所有任务状态并更新UI
+        """
+        logger.info("【刷新进度】开始刷新任务进度...")
+        
+        # 1. 重置环境并导航
+        if not self.reset_app_state(prefix="【刷新进度】"):
+             logger.error("【刷新进度】重置应用状态失败")
+             return
+             
+        if not self.navigate_to_extra_active():
+             logger.error("【刷新进度】无法进入额外活跃页面")
+             return
+             
+        # 2. 滚动到顶部，确保从头开始检测
+        logger.info("【刷新进度】正在滚动到顶部...")
+        for _ in range(5):
+            self.d.swipe_ext("down", scale=0.6)
+            time.sleep(0.5)
+            
+        # 3. 扫描检查所有任务
+        pending_tasks = self.extra_active_tasks_map.copy()
+        
+        # 记录已找到并更新状态的任务，避免重复处理，默认为 pending
+        for name in pending_tasks:
+            self.update_task_status(name, "pending")
+            
+        max_scrolls = 15
+        last_source = None
+        
+        for i in range(max_scrolls):
+            if not self.check_alive(): break
+            
+            logger.info(f"【刷新进度】扫描第 {i+1} 页...")
+            
+            # 检查当前页面的所有剩余任务
+            current_checking_names = list(pending_tasks.keys())
+            
+            for name in current_checking_names:
+                text = pending_tasks[name]
+                
+                # 检查任务文本是否存在
+                if self.d(textContains=text).exists:
+                    # 检查是否已完成
+                    if self.is_task_completed(text):
+                        self.update_task_status(name, "success")
+                        logger.info(f"【刷新进度】任务【{name}】: 已完成")
+                    else:
+                        self.update_task_status(name, "pending")
+                        logger.info(f"【刷新进度】任务【{name}】: 未完成")
+                        
+                    # 无论是否完成，既然找到了，就可以从待寻找列表中移除
+                    del pending_tasks[name]
+            
+            if not pending_tasks:
+                logger.info("【刷新进度】所有任务状态已确认")
+                break
+                
+            # 滚动
+            source = self.d.dump_hierarchy()
+            if last_source and source == last_source:
+                logger.info("【刷新进度】已到达底部")
+                break
+            last_source = source
+            
+            self.d.swipe_ext("up", scale=0.6) # 向上滑，内容向下滚
+            time.sleep(1.0)
+            
+        # 结束后，剩余在 pending_tasks 里的就是没找到的
+        for name in pending_tasks:
+            logger.warning(f"【刷新进度】未找到任务【{name}】，标记为未执行")
+            self.update_task_status(name, "pending")
+            
+        logger.info("【刷新进度】刷新完成")
 
     def is_task_completed(self, task_text_contains):
         """
@@ -773,11 +899,21 @@ class BotCore:
         # 1. 查找并点击文本框
         logger.info(f"{prefix} 等待文本框")
         found_edit = False
-        if self.click_element(text_contains="分享新鲜事", timeout=5, prefix=prefix):
-             found_edit = True
-        elif self.d(className="android.widget.EditText").exists:
-             self.d(className="android.widget.EditText").click()
-             found_edit = True
+        
+        # 重试 10 次，每次 2 秒
+        for i in range(10):
+            # 不打印日志的查找
+            if self.d(textContains="分享新鲜事").exists:
+                 self.d(textContains="分享新鲜事").click()
+                 found_edit = True
+                 break
+            elif self.d(className="android.widget.EditText").exists:
+                 self.d(className="android.widget.EditText").click()
+                 found_edit = True
+                 break
+            
+            # 如果没找到，等待 2 秒
+            time.sleep(2)
         
         if found_edit:
              time.sleep(1)

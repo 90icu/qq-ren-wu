@@ -50,8 +50,16 @@ args = [
 print("正在开始打包...")
 print(f"包含的隐藏模块: {task_modules}")
 
+import shutil
+
 try:
     PyInstaller.__main__.run(args)
+    
+    # 复制 config.json 到 dist 目录
+    if os.path.exists("config.json"):
+        shutil.copy("config.json", os.path.join("dist", "config.json"))
+        print(f"已复制 config.json 到 dist 目录")
+        
     print("\n" + "="*50)
     print("打包完成！")
     print(f"可执行文件位置: {os.path.join(os.getcwd(), 'dist', name + '.exe')}")

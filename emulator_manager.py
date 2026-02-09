@@ -88,9 +88,9 @@ class EmulatorManager:
         # 这里只负责下发命令
         self.execute_cmd(["modify", "--index", str(index), "--resolution", f"{width},{height},{dpi}"])
 
-    def launch(self, index):
+    def launch(self, index, timeout=60):
         """启动指定索引的模拟器"""
-        logger.info(f"正在启动模拟器 [{index}]...")
+        logger.info(f"正在启动模拟器 [{index}] (超时: {timeout}s)...")
         
         # 启动前强制设置分辨率
         self.set_resolution(index, 504, 955, 240)
@@ -99,7 +99,11 @@ class EmulatorManager:
         
         # 简单的等待逻辑，实际可能需要轮询 check running 状态
         # 这里为了演示简单，循环检查状态直到运行
-        for _ in range(30):
+        # 每次 sleep 2秒
+        max_retries = int(timeout / 2)
+        if max_retries < 1: max_retries = 1
+        
+        for _ in range(max_retries):
             if self.is_running(index):
                 logger.info(f"模拟器 [{index}] 已启动")
                 return True

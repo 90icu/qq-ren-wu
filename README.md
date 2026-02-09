@@ -61,10 +61,10 @@
     *   **浏览空间** (`liu_lan_kong_jian.py`)
     *   **登陆农场** (`deng_lu_nong_chang.py`)
     *   **日签打卡** (`ri_qian_da_ka.py`)
+    *   **金币加速** (`jin_bi_jia_su.py`)
     *   **天天福利** (`tian_tian_fu_li.py`)
     *   **免费小说** (`mian_fei_xiao_shuo.py`): 自动化阅读或签到。
     *   **QQ 音乐简洁** (`qq_yin_yue_jian_jie_ban.py`): 听歌、签到等任务。
-    *   **金币加速** (`jin_bi_jia_su.py`)
 
 ## 技术栈
 

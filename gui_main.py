@@ -134,45 +134,14 @@ class AutomationGUI:
         self.btn_launch = ttk.Button(toolbar, text="启动模拟器", command=self.launch_only_selected, state=tk.DISABLED)
         self.btn_launch.pack(side=tk.LEFT, padx=5)
 
-        # self.btn_extra_active 已移除，作为公共步骤
+        self.btn_refresh = ttk.Button(toolbar, text="刷新任务进度", command=self.refresh_task_progress_click, state=tk.DISABLED)
+        self.btn_refresh.pack(side=tk.LEFT, padx=5)
 
-        self.btn_start = ttk.Button(toolbar, text="一键执行全部任务", command=self.start_selected, state=tk.DISABLED)
+        self.btn_start = ttk.Button(toolbar, text="执行全部任务", command=self.start_selected, state=tk.DISABLED)
         self.btn_start.pack(side=tk.LEFT, padx=5, ipadx=20)
         
-        # 任务按钮栏 (在启动按钮下方)
-        # 使用 Frame 容器，内部使用 grid 布局实现自动换行
-        task_bar = ttk.Frame(top_frame)
-        task_bar.pack(side=tk.TOP, fill=tk.X, pady=5)
-        
-        # 动态添加任务按钮
-        try:
-            # 临时实例化一个 BotCore 获取任务列表 (不需要真实连接)
-            temp_bot = BotCore(None)
-            task_list = temp_bot.get_task_list()
-            
-            # 每行最多显示10个按钮
-            buttons_per_row = 10
-            
-            button_index = 0
-            for i, (task_name, _) in enumerate(task_list):
-                if task_name == "额外活跃":
-                    continue
-
-                # 计算行号和列号
-                row = button_index // buttons_per_row
-                col = button_index % buttons_per_row
-                
-                # 使用 lambda 捕获 task_name
-                btn = ttk.Button(task_bar, text=task_name, 
-                                 command=lambda t=task_name: self.run_specific_task_click(t))
-                # 使用 grid 布局
-                btn.grid(row=row, column=col, padx=5, pady=2, sticky="w")
-                
-                button_index += 1
-                
-        except Exception as e:
-            logger.error(f"获取任务列表失败: {e}")
-            ttk.Label(task_bar, text="加载任务列表失败").pack(side=tk.LEFT)
+        # 任务进度展示区域
+        self.setup_progress_ui(top_frame)
         
         # 列表区域
         tree_frame = ttk.Frame(top_frame)
@@ -229,6 +198,81 @@ class AutomationGUI:
         # 初始刷新
         if self.emu_mgr:
             self.refresh_list_loop()
+
+    def setup_progress_ui(self, parent):
+        """
+        初始化任务进度展示区域
+        """
+        # 使用 LabelFrame 容器
+        progress_group = ttk.LabelFrame(parent, text="任务执行进度")
+        progress_group.pack(side=tk.TOP, fill=tk.X, pady=5, padx=5)
+        
+        # 内部使用 grid 布局
+        self.task_status_widgets = {} # task_name -> status_label
+        
+        try:
+            # 获取任务列表
+            temp_bot = BotCore(None)
+            task_list = temp_bot.get_task_list()
+            
+            # 样式配置
+            style = ttk.Style()
+            style.configure("Status.TLabel", font=("微软雅黑", 9))
+            style.configure("Pending.Status.TLabel", foreground="#808080") # 灰色
+            style.configure("Running.Status.TLabel", foreground="#0000FF") # 蓝色
+            style.configure("Success.Status.TLabel", foreground="#008000") # 绿色
+            style.configure("Failed.Status.TLabel", foreground="#FF0000")  # 红色
+            
+            # 创建网格
+            # 每行显示 6 个任务，每个任务占用一格 (TaskName: Status)
+            cols_per_row = 6
+            
+            # 过滤掉额外活跃(虽然 BotCore 已过滤，再保险一次)
+            filtered_list = [item for item in task_list if item[0] != "额外活跃"]
+            
+            for i, (task_name, _) in enumerate(filtered_list):
+                row = i // cols_per_row
+                col = i % cols_per_row
+                
+                # 每个单元格是一个小 Frame
+                cell_frame = ttk.Frame(progress_group, padding=2)
+                cell_frame.grid(row=row, column=col, sticky="w", padx=10, pady=2)
+                
+                # 任务名
+                lbl_name = ttk.Label(cell_frame, text=f"{task_name}:", font=("微软雅黑", 9, "bold"))
+                lbl_name.pack(side=tk.LEFT)
+                
+                # 状态
+                lbl_status = ttk.Label(cell_frame, text="未执行", style="Pending.Status.TLabel")
+                lbl_status.pack(side=tk.LEFT, padx=(5, 0))
+                
+                self.task_status_widgets[task_name] = lbl_status
+                
+        except Exception as e:
+            logger.error(f"初始化进度UI失败: {e}")
+            ttk.Label(progress_group, text="加载任务列表失败").pack()
+
+    def update_task_status_ui(self, task_name, status_code):
+        """
+        更新任务状态 UI (线程安全)
+        status_code: pending, running, success, failed
+        """
+        def _update():
+            if task_name not in self.task_status_widgets:
+                return
+                
+            lbl = self.task_status_widgets[task_name]
+            
+            if status_code == "pending":
+                lbl.config(text="未执行", style="Pending.Status.TLabel")
+            elif status_code == "running":
+                lbl.config(text="执行中...", style="Running.Status.TLabel")
+            elif status_code == "success":
+                lbl.config(text="执行成功", style="Success.Status.TLabel")
+            elif status_code == "failed":
+                lbl.config(text="执行失败", style="Failed.Status.TLabel")
+        
+        self.root.after(0, _update)
 
     def setup_image_recognition_ui(self, parent):
         """
@@ -352,11 +396,26 @@ class AutomationGUI:
         selected_items = self.tree.selection()
         if selected_items:
             self.btn_start.config(state=tk.NORMAL)
-            self.btn_launch.config(state=tk.NORMAL)
+            self.btn_refresh.config(state=tk.NORMAL)
             # self.btn_extra_active.config(state=tk.NORMAL) # 已移除
+            
+            # 检查选中的模拟器状态
+            has_stopped = False
+            for item in selected_items:
+                values = self.tree.item(item, "values")
+                # values[2] is status ("运行中" or "已停止")
+                if values[2] != "运行中":
+                    has_stopped = True
+                    break
+            
+            if has_stopped:
+                self.btn_launch.config(state=tk.NORMAL)
+            else:
+                self.btn_launch.config(state=tk.DISABLED)
         else:
             self.btn_start.config(state=tk.DISABLED)
             self.btn_launch.config(state=tk.DISABLED)
+            self.btn_refresh.config(state=tk.DISABLED)
             # self.btn_extra_active.config(state=tk.DISABLED) # 已移除
 
     def refresh_list_loop(self):
@@ -413,6 +472,84 @@ class AutomationGUI:
 
         # 触发一次选择事件检查按钮状态
         self.on_tree_select(None)
+
+    def refresh_task_progress_click(self):
+        """
+        刷新任务进度按钮点击事件
+        """
+        selected_items = self.tree.selection()
+        if not selected_items:
+            messagebox.showinfo("提示", "请先选择模拟器")
+            return
+            
+        for item in selected_items:
+            values = self.tree.item(item, "values")
+            index = values[0]
+            
+            if index in self.running_tasks and self.running_tasks[index].is_alive():
+                logger.warning(f"模拟器 [{index}] 正在运行任务，请先停止或等待完成")
+                continue
+                
+            threading.Thread(target=self.run_refresh_wrapper, args=(index,), daemon=True).start()
+
+    def run_refresh_wrapper(self, index):
+        """
+        刷新任务进度的线程逻辑
+        """
+        stop_event = threading.Event()
+        self.stop_events[index] = stop_event
+        self.running_tasks[index] = threading.current_thread()
+        
+        try:
+            logger.info(f"刷新进度线程启动: 模拟器 [{index}]")
+            
+            # 1. 启动模拟器 (复用逻辑)
+            timeout = self.config.get("emulator_timeout", 30)
+            if not self.emu_mgr.launch(index, timeout=timeout):
+                logger.error(f"模拟器 [{index}] 启动失败")
+                return
+
+            if stop_event.is_set(): return
+            
+            # 2. 等待 Android 就绪
+            logger.info(f"[{index}] 等待 ADB 连接...")
+            serial = self.emu_mgr.get_adb_serial(index)
+            
+            connected = False
+            max_adb_retries = int(timeout / 2)
+            if max_adb_retries < 1: max_adb_retries = 1
+            
+            for _ in range(max_adb_retries):
+                if stop_event.is_set(): return
+                output = self.emu_mgr.execute_cmd(["adb", "--index", str(index), "--command", "get-state"])
+                if output and "device" in output:
+                    connected = True
+                    break
+                time.sleep(2)
+            
+            if not connected:
+                logger.error(f"[{index}] 无法连接 ADB")
+                return
+
+            # 3. 执行 Refresh 逻辑
+            def status_callback(t_name, status):
+                self.update_task_status_ui(t_name, status)
+            
+            bot = BotCore(serial, self.pkg_name, image_callback=self.update_image_recognition, task_status_callback=status_callback)
+            bot.register_stop_event(stop_event)
+            
+            if bot.connect():
+                if stop_event.is_set(): return
+                bot.refresh_task_progress()
+                logger.info(f"[{index}] 刷新任务进度完成")
+            
+        except Exception as e:
+            logger.error(f"[{index}] 刷新任务异常: {e}")
+        finally:
+            if index in self.running_tasks:
+                del self.running_tasks[index]
+            if index in self.stop_events:
+                del self.stop_events[index]
 
     def run_specific_task_click(self, task_name):
         """
@@ -494,8 +631,34 @@ class AutomationGUI:
             values = self.tree.item(item, "values")
             index = values[0]
             
+            # 检查是否正在重启中
+            if index in self.restarting_tasks:
+                logger.warning(f"模拟器 [{index}] 正在重启中，请稍候")
+                continue
+
+            # 如果已有任务在运行，强制停止并重启
             if index in self.running_tasks and self.running_tasks[index].is_alive():
-                logger.warning(f"模拟器 [{index}] 的任务已在运行中")
+                logger.info(f"模拟器 [{index}] 正在运行任务，强制停止并重新执行全部任务")
+                
+                # 标记正在重启
+                self.restarting_tasks.add(index)
+
+                # 发送停止信号
+                if index in self.stop_events:
+                    self.stop_events[index].set()
+                
+                # 启动协调线程
+                def restart_handler(idx):
+                    try:
+                        old_thread = self.running_tasks.get(idx)
+                        if old_thread:
+                            old_thread.join(timeout=10)
+                        self._start_task_thread(idx, None) # None for all tasks
+                    finally:
+                        if idx in self.restarting_tasks:
+                            self.restarting_tasks.remove(idx)
+
+                threading.Thread(target=restart_handler, args=(index,), daemon=True).start()
                 continue
             
             self._start_task_thread(index, None) # None 表示全部任务
@@ -584,18 +747,24 @@ class AutomationGUI:
                              is_running_before = True
                          break
             
-            if not self.emu_mgr.launch(index):
+            # 获取超时配置
+            timeout = self.config.get("emulator_timeout", 30)
+
+            if not self.emu_mgr.launch(index, timeout=timeout):
                 logger.error(f"模拟器 [{index}] 启动失败")
                 return
 
             if stop_event.is_set(): return
             
             # 2. 等待 Android 就绪
-            logger.info(f"[{index}] 等待 ADB 连接...")
+            logger.info(f"[{index}] 等待 ADB 连接 (超时: {timeout}s)...")
             serial = self.emu_mgr.get_adb_serial(index)
             
             connected = False
-            for _ in range(30):
+            max_adb_retries = int(timeout / 2)
+            if max_adb_retries < 1: max_adb_retries = 1
+            
+            for _ in range(max_adb_retries):
                 if stop_event.is_set(): return
                 output = self.emu_mgr.execute_cmd(["adb", "--index", str(index), "--command", "get-state"])
                 if output and "device" in output:
@@ -611,7 +780,11 @@ class AutomationGUI:
             # username = account_config.get("username")
             # password = account_config.get("password")
             
-            bot = BotCore(serial, self.pkg_name, image_callback=self.update_image_recognition)
+            # 定义状态回调
+            def status_callback(t_name, status):
+                self.update_task_status_ui(t_name, status)
+            
+            bot = BotCore(serial, self.pkg_name, image_callback=self.update_image_recognition, task_status_callback=status_callback)
             bot.register_stop_event(stop_event)
             
             if bot.connect():
@@ -631,6 +804,11 @@ class AutomationGUI:
                 bot.perform_task(target_task_name=specific_task_name)
                 
                 logger.info(f"[{index}] 自动化任务完成")
+
+                # 如果是执行全部任务，完成后自动刷新进度
+                if specific_task_name is None and not stop_event.is_set():
+                     logger.info(f"[{index}] 全任务流程结束，开始自动刷新进度...")
+                     bot.refresh_task_progress()
             
         except Exception as e:
             logger.error(f"[{index}] 任务异常: {e}")

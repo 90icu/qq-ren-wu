@@ -50,8 +50,15 @@ def execute(bot):
         # 每次滑动前检查是否有 "立即签到.png"
         if bot.click_image_template("立即签到.png", prefix="【天天福利】"):
             logger.info("【天天福利】识别到并点击了 '立即签到.png'")
+            
+            # 点击了立即签到之后，等两秒执行一次返回，再保持活跃
+            logger.info("【天天福利】等待 2 秒...")
+            time.sleep(2)
+            logger.info("【天天福利】执行返回...")
+            bot.d.press("back")
+
             # 识别到并点击之后，等待20秒，上下滑动保持屏幕不熄灭即可，等结束
-            logger.info("【天天福利】点击签到后，继续保持活跃 20 秒...")
+            logger.info("【天天福利】点击签到并返回后，继续保持活跃 20 秒...")
             # 重置开始时间，确保至少再执行 20 秒
             # 或者直接在这里执行一个 20 秒的循环
             sub_start = time.time()

@@ -43,6 +43,7 @@ def execute(bot):
             start_wait = time.time()
             clicked_skip = False
             clicked_exchange = False
+            clicked_ad = False
             
             while time.time() - start_wait < 30:
                 # 1. 检测跳过
@@ -65,14 +66,57 @@ def execute(bot):
                 if is_found_ad:
                      logger.info(f"【金币加速】检测到并点击了 '观看广告领金币.png' (相似度: {sim_ad:.2f})，提前结束等待")
                      clicked_skip = True
+                     clicked_ad = True
                      break
+
+                # 4. 检测 确认.png
+                is_found_confirm, sim_confirm = bot.click_image_template("确认.png", threshold=0.8, prefix="【金币加速】", suppress_warning=True, return_details=True)
+                if is_found_confirm:
+                     logger.info(f"【金币加速】检测到并点击了 '确认.png' (相似度: {sim_confirm:.2f})，提前结束等待")
+                     clicked_skip = True
+                     break
+
+                # 5. 检测 QQ登录-企鹅图标-2.png
+                # 如果识别到，先识别点击“单选-方形.png”，再点击“QQ登录-企鹅图标-2.png”
+                is_found_login, sim_login = bot.click_image_template("QQ登录-企鹅图标-2.png", threshold=0.8, prefix="【金币加速】", suppress_warning=True, return_details=True, action="check")
+                
+                if is_found_login:
+                     logger.info(f"【金币加速】检测到 'QQ登录-企鹅图标-2.png' (相似度: {sim_login:.2f})")
+                     
+                     # 1. 识别并点击 单选-方形.png
+                     if bot.click_image_template("单选-方形.png", threshold=0.8, prefix="【金币加速】"):
+                         logger.info("【金币加速】已点击 '单选-方形.png'")
+                         time.sleep(1)
+                     
+                     # 2. 点击 QQ登录-企鹅图标-2.png
+                     if bot.click_image_template("QQ登录-企鹅图标-2.png", threshold=0.8, prefix="【金币加速】"):
+                         logger.info("【金币加速】已点击 'QQ登录-企鹅图标-2.png'")
+                         time.sleep(1)
+
+                     # 3. 识别并点击 同意.png (重试 5 次，每次间隔 2 秒)
+                     for _ in range(5):
+                         if bot.click_image_template("同意.png", threshold=0.8, prefix="【金币加速】", suppress_warning=True):
+                             logger.info("【金币加速】已点击 '同意.png'")
+                             time.sleep(1)
+                             break
+                         time.sleep(2)
+                    
+                     # 继续循环，不跳出
+                     continue
                 
                 # 每隔 3 秒打印一次正在检测的日志
                 elapsed = time.time() - start_wait
                 if int(elapsed) % 3 == 0 and int(elapsed) > 0:
-                     logger.info(f"【金币加速】正在后台监测 '跳过.png'/{sim_skip:.2f} 或 '立即兑换.png'/{sim_exchange:.2f} 或 '观看广告领金币.png'/{sim_ad:.2f} ...")
+                     logger.info(f"【金币加速】监测中: 跳过/{sim_skip:.2f} 兑换/{sim_exchange:.2f} 广告/{sim_ad:.2f} 确认/{sim_confirm:.2f} 登录/{sim_login:.2f}")
                      
                 time.sleep(1)
+            
+            if clicked_ad:
+                logger.info("【金币加速】已进入广告播放，等待 35 秒...")
+                time.sleep(35)
+                # 尝试点击关闭广告（如果有）
+                # 通常广告结束会有关闭按钮，这里可以尝试通用的关闭逻辑，或者留给后续步骤
+                # 暂时先等待，不执行额外关闭操作，除非用户要求
             
             if not clicked_skip:
                 logger.info("【金币加速】30秒内未检测到目标图片，等待结束")

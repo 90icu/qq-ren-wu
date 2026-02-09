@@ -25,11 +25,11 @@ def execute(bot):
 
     time.sleep(3) # 等待加载好友动态页面
 
-    # 2. 循环点赞 (目标: 1次, 超时: 30秒)
-    logger.info("【点赞说说】开始寻找并点赞 (目标: 1个)")
+    # 2. 循环点赞 (目标: 3次, 超时: 30秒)
+    logger.info("【点赞说说】开始寻找并点赞 (目标: 3个)")
     
     like_count = 0
-    target_count = 1
+    target_count = 3
     timeout = 30
     start_time = time.time()
     
