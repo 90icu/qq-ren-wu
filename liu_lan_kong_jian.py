@@ -6,10 +6,8 @@ def execute(bot):
     具体任务：浏览空间
     步骤：
     1. 找到“浏览十条空间好友动态”
-    2. 检测是否出现“前往领取查看.png” (任务完成标志)
-       - 如果出现：直接返回 True，跳过任务
-    3. 如果未出现：点击进入，往下一直快速滚动，持续20秒
-    4. 等待两秒，然后返回
+    2. 点击进入，往下一直快速滚动，持续20秒
+    3. 等待两秒，然后返回
     """
     logger.info("【浏览空间】开始执行具体任务逻辑")
 
@@ -33,17 +31,7 @@ def execute(bot):
     logger.info("【浏览空间】等待5秒加载页面...")
     time.sleep(5) 
     
-    # 2. 检测“前往领取查看.png” (只检测不点击)
-    # logger.info("【浏览空间】检测是否已完成 (前往领取查看.png)")
-    # success, _ = bot.click_image_template("前往领取查看.png", threshold=0.8, prefix="【浏览空间】", return_details=True, action="check")
-    
-    # if success:
-    #     logger.info("【浏览空间】检测到 '前往领取查看'，任务已完成，跳过执行")
-    #     return True
-        
-    # logger.info("【浏览空间】未检测到完成标志，开始执行任务")
-
-    # 3. 往下一直快速滚动，持续20秒
+    # 2. 往下一直快速滚动，持续20秒
     logger.info("【浏览空间】开始快速滚动 (持续20秒)")
     
     start_time = time.time()
@@ -63,7 +51,7 @@ def execute(bot):
         
     logger.info("【浏览空间】滚动结束")
     
-    # 4. 等两秒
+    # 3. 等两秒
     logger.info("【浏览空间】等待2秒")
     time.sleep(2)
     

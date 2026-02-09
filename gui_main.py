@@ -397,7 +397,6 @@ class AutomationGUI:
         if selected_items:
             self.btn_start.config(state=tk.NORMAL)
             self.btn_refresh.config(state=tk.NORMAL)
-            # self.btn_extra_active.config(state=tk.NORMAL) # 已移除
             
             # 检查选中的模拟器状态
             has_stopped = False
@@ -416,7 +415,6 @@ class AutomationGUI:
             self.btn_start.config(state=tk.DISABLED)
             self.btn_launch.config(state=tk.DISABLED)
             self.btn_refresh.config(state=tk.DISABLED)
-            # self.btn_extra_active.config(state=tk.DISABLED) # 已移除
 
     def refresh_list_loop(self):
         """
@@ -431,8 +429,6 @@ class AutomationGUI:
             logger.error("未初始化模拟器管理器，无法刷新列表")
             return
             
-        # logger.info("正在刷新模拟器列表...") # 减少日志刷屏
-        
         # 记录当前选中项，以便刷新后恢复 (如果还在)
         selected_indices = []
         for item in self.tree.selection():
@@ -460,7 +456,6 @@ class AutomationGUI:
                 if str(idx) in selected_indices:
                     self.tree.selection_add(item)
                     
-            # logger.info(f"已获取 {len(emulators)} 个模拟器实例")
         except Exception as e:
             logger.error(f"刷新列表失败: {e}")
         
@@ -706,8 +701,6 @@ class AutomationGUI:
 
 
 
-    # 移除不需要的按钮方法
-    # stop_selected, stop_all_tasks
         
     def stop_single_task(self, index):
         if index in self.stop_events:
@@ -777,8 +770,6 @@ class AutomationGUI:
                 return
 
             # 3. 执行 Bot 逻辑
-            # username = account_config.get("username")
-            # password = account_config.get("password")
             
             # 定义状态回调
             def status_callback(t_name, status):
@@ -790,14 +781,9 @@ class AutomationGUI:
             if bot.connect():
                 if stop_event.is_set(): return
                 
-                # 之前的启动逻辑已移除，由 bot.perform_task() 内部的 reset_app_state() 接管
-                # 这样可以保证每个任务执行前都进行纯净的重置（杀掉QQ、音乐进程并重启）
+                if stop_event.is_set(): return
                 
                 if stop_event.is_set(): return
-                # bot.handle_popup() # 内部已调用
-                
-                if stop_event.is_set(): return
-                # bot.login_qq(username, password) # 内部暂时无需显式登录
                 
                 if stop_event.is_set(): return
                 # 传入特定任务名称

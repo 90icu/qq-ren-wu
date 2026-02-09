@@ -16,7 +16,6 @@ def navigate(bot):
     此逻辑原在 bot_core.py 中，现移至此处统一管理
     """
     prefix = "【额外活跃】"
-    # logger.info(f"开始执行公共步骤:{prefix}")
 
     # 0. 检查是否已在目标页面
     # 通过检测是否存在该页面特有的任务入口文本来判断
@@ -40,12 +39,10 @@ def navigate(bot):
     is_already_on_page = False
     for indicator in indicators:
         if bot.d(textContains=indicator).exists:
-            # logger.info(f"{prefix} 检测到页面包含 '{indicator}'，判断已在额外活跃页面")
             is_already_on_page = True
             break
             
     if is_already_on_page:
-        # logger.info(f"{prefix}检测到已在额外活跃页面，跳过导航")
         return True
     
     # 1. 点击左上角头像 (带重试机制)

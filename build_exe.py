@@ -13,7 +13,8 @@ task_modules = [
     "liu_lan_kong_jian",
     "deng_lu_nong_chang", "ri_qian_da_ka",
     "tian_tian_fu_li", "mian_fei_xiao_shuo",
-    "qq_yin_yue_jian_jie_ban", "jin_bi_jia_su"
+    "qq_yin_yue_jian_jie_ban", "jin_bi_jia_su",
+    "tian_jia_hao_you"
 ]
 
 # 构建 hidden imports 参数

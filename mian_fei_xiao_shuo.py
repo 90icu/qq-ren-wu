@@ -86,9 +86,7 @@ def execute(bot):
             
         except Exception as e:
             logger.error(f"【免费小说】盲点失败: {e}")
-
-    # 3. 返回两次
-
+            
     # 3. 任务结束
     logger.info("【免费小说】任务完成")
 

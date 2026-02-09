@@ -231,7 +231,6 @@ class BotCore:
         返回: list of (task_name, module_name)
         """
         return [
-            # ("额外活跃", "e_wai_huo_yue"), # 移除：作为公共模块，不作为独立任务显示
             ("福利社", "fu_li_she"),
             ("发布说说", "fa_bu_shuo_shuo"),
             ("AI妙绘", "ai_miao_hui"),
@@ -243,8 +242,9 @@ class BotCore:
             ("金币加速", "jin_bi_jia_su"),
             ("天天福利", "tian_tian_fu_li"),
             ("免费小说", "mian_fei_xiao_shuo"),
-            ("QQ音乐简洁", "qq_yin_yue_jian_jie_ban")
-            ]
+            ("QQ音乐简洁", "qq_yin_yue_jian_jie_ban"),
+            ("添加好友", "tian_jia_hao_you")
+        ]
 
     def perform_task(self, target_task_name=None):
         logger.info(f"开始执行任务流程 {f'[{target_task_name}]' if target_task_name else '[全部]'}")
@@ -368,43 +368,56 @@ class BotCore:
         restarted: True 表示在执行过程中发生了重启 QQ 的操作（且最后处于可用状态）
         """
         restarted = False
+        
+        # 判断是否需要进入额外活跃页面
+        is_extra_active_task = task_name in self.extra_active_tasks_map
 
-        # 尝试执行公共步骤
-        if not self.navigate_to_extra_active():
-            logger.warning(f"【{task_name}】执行失败，尝试重启 QQ")
-            self.restart_qq()
-            restarted = True
+        # 尝试执行公共步骤 (仅针对额外活跃任务)
+        if is_extra_active_task:
             if not self.navigate_to_extra_active():
-                logger.error(f"重启后公共步骤依然失败，跳过任务【{task_name}】")
-                return False, restarted
+                logger.warning(f"【{task_name}】执行失败，尝试重启 QQ")
+                self.restart_qq()
+                restarted = True
+                if not self.navigate_to_extra_active():
+                    logger.error(f"重启后公共步骤依然失败，跳过任务【{task_name}】")
+                    return False, restarted
+        else:
+            logger.info(f"【{task_name}】非额外活跃任务，跳过公共导航步骤")
 
         logger.info(f"准备执行任务:【{task_name}】")
 
         # 尝试执行具体任务
         if task_func():
-            # logger.info(f"【{task_name}】任务完成") # 避免重复打印，具体任务脚本中已包含
             return True, restarted
         else:
             logger.warning(f"【{task_name}】任务执行失败，尝试重启 QQ")
             self.restart_qq()
             restarted = True
             
-            # 重启后再次执行公共步骤
-            if self.navigate_to_extra_active():
-                logger.info(f"重启后公共步骤执行成功，正在重试任务【{task_name}】...")
-                
-                # 重试任务
+            # 重启后再次执行公共步骤 (如果需要)
+            if is_extra_active_task:
+                if self.navigate_to_extra_active():
+                    logger.info(f"重启后公共步骤执行成功，正在重试任务【{task_name}】...")
+                    
+                    # 重试任务
+                    if task_func():
+                        logger.info(f"【{task_name}】任务重试成功")
+                        return True, restarted
+                    else:
+                        logger.error(f"【{task_name}】任务重试依然失败，继续下一个任务")
+                        return False, restarted
+                else:
+                    logger.error(f"重启后公共步骤执行失败，无法继续")
+                    return False, restarted
+            else:
+                # 非额外活跃任务，重启后直接重试
+                logger.info(f"重启后正在重试任务【{task_name}】...")
                 if task_func():
                     logger.info(f"【{task_name}】任务重试成功")
                     return True, restarted
                 else:
                     logger.error(f"【{task_name}】任务重试依然失败，继续下一个任务")
-                    # 即使失败，因为我们已经重启并导航到了列表页，所以 restarted=True
-                    # 下一个任务可以直接利用这个状态
                     return False, restarted
-            else:
-                logger.error(f"重启后公共步骤执行失败，无法继续")
-                return False, restarted
 
 
     def refresh_task_progress(self):
@@ -422,16 +435,10 @@ class BotCore:
              logger.error("【刷新进度】无法进入额外活跃页面")
              return
              
-        # 2. 滚动到顶部，确保从头开始检测
-        logger.info("【刷新进度】正在滚动到顶部...")
-        for _ in range(5):
-            self.d.swipe_ext("down", scale=0.6)
-            time.sleep(0.5)
-            
-        # 3. 扫描检查所有任务
+        # 2. 扫描检查所有任务
+        # 记录已找到并更新状态的任务，避免重复处理，默认为 pending
         pending_tasks = self.extra_active_tasks_map.copy()
         
-        # 记录已找到并更新状态的任务，避免重复处理，默认为 pending
         for name in pending_tasks:
             self.update_task_status(name, "pending")
             
@@ -597,7 +604,6 @@ class BotCore:
                             logger.info(f"{prefix} 检测到按钮 '{text}' 已激活 (颜色 B:{b:.1f}, Diff_G:{b-g:.1f})")
                             return True
                         else:
-                            # logger.debug("颜色未达标，继续等待...")
                             pass
                 except Exception as e:
                     logger.warning(f"{prefix} 颜色检测异常: {e}")
@@ -626,7 +632,6 @@ class BotCore:
             
             # 每5秒打印一次警告日志
             if time.time() - last_log_time >= 5.0:
-                # logger.warning(f"{prefix} 图像识别未找到目标 | 模板: {template_name} | 最高相似度: {similarity:.2f} (阈值: {threshold})")
                 last_log_time = time.time()
                 
             time.sleep(1)
@@ -675,7 +680,6 @@ class BotCore:
         if found_ele:
             # 找到元素后，等待一小段时间再点击，确保动画结束
             time.sleep(1.0)
-            # logger.info(f"点击元素 | 依据: {method}") # 移除详细日志
             found_ele.click()
             # 点击后也稍微等待一下
             time.sleep(1.0)
@@ -828,7 +832,6 @@ class BotCore:
                 else:
                     if not suppress_warning:
                          pass
-                         # logger.warning(f"图像识别未找到目标 | 模板: {template_name} | 最高相似度: {max_val:.2f} (阈值: {threshold})")
                     if return_details: return False, max_val
             else:
                 # 调用图像识别回调更新 UI (未找到情况)
@@ -840,7 +843,6 @@ class BotCore:
 
                 if not suppress_warning:
                     pass
-                    # logger.warning(f"图像识别完全失败")
                 if return_details: return False, 0.0
 
         except Exception as e:
@@ -981,10 +983,6 @@ class BotCore:
             if self.d(textContains=task_text).exists:
                 # 任务在屏幕上，但 is_task_completed 返回 False，说明未完成
                 # 双重确认：有时 OCR 或 UI 树更新滞后，稍微等一下再查一次
-                # time.sleep(0.5)
-                # if self.is_task_completed(task_text):
-                #     found_completed = True
-                #     break
                 logger.info(f"找到任务【{task_text}】但未显示完成")
                 break
             

@@ -55,10 +55,5 @@ def execute(bot):
             time.sleep(1.5) # 等待加载
 
     logger.info(f"【点赞说说】点赞流程结束，共点赞 {like_count} 个")
-
-    # 3. 返回 (已移除，直接结束由外层处理重启)
-    # logger.info("【点赞说说】返回上一级")
-    # bot.d.press("back")
-    # time.sleep(2)
     
     return True
