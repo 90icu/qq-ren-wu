@@ -37,7 +37,7 @@
         {
             "ldplayer_path": "D:\\leidian\\LDPlayer9",
             "emulator_timeout": 60,
-            "friend_qq": "12345678, 87654321"
+            "friend_qq": "12345678,87654321"
         }
         ```
 
