@@ -1405,6 +1405,7 @@
   ('tempfile', 'D:\\Python\\Python311\\Lib\\tempfile.py', 'PYMODULE'),
   ('textwrap', 'D:\\Python\\Python311\\Lib\\textwrap.py', 'PYMODULE'),
   ('threading', 'D:\\Python\\Python311\\Lib\\threading.py', 'PYMODULE'),
+  ('tian_jia_hao_you', 'G:\\qq-ren-wu\\tian_jia_hao_you.py', 'PYMODULE'),
   ('tian_tian_fu_li', 'G:\\qq-ren-wu\\tian_tian_fu_li.py', 'PYMODULE'),
   ('tkinter', 'D:\\Python\\Python311\\Lib\\tkinter\\__init__.py', 'PYMODULE'),
   ('tkinter.commondialog',

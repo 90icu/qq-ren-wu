@@ -140,6 +140,9 @@ class AutomationGUI:
         self.btn_start = ttk.Button(toolbar, text="执行全部任务", command=self.start_selected, state=tk.DISABLED)
         self.btn_start.pack(side=tk.LEFT, padx=5, ipadx=20)
         
+        # 调试功能
+        ttk.Button(toolbar, text="添加好友(调试)", command=lambda: self.run_specific_task_click("添加好友")).pack(side=tk.LEFT, padx=20)
+        
         # 任务进度展示区域
         self.setup_progress_ui(top_frame)
         

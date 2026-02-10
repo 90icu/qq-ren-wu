@@ -93,14 +93,15 @@ class BotCore:
         if self.d:
             logger.info(f"启动应用 {self.package_name}")
             self.d.app_start(self.package_name)
-            # 等待主页某个特征元素出现，例如 "消息" 标签
-            # 这样比固定 sleep 更快
-            if self.d(text="消息").wait(timeout=20):
-                logger.info("应用主页已加载")
-                return True
-            else:
-                logger.warning("应用启动可能超时，未检测到主页")
-                return False
+            # 优化：每秒检查，超时20秒，不打印日志
+            for _ in range(20):
+                if self.d(text="消息").exists:
+                    logger.info("应用主页已加载")
+                    return True
+                time.sleep(1)
+            
+            logger.warning("应用启动可能超时，未检测到主页")
+            return False
         else:
             logger.error("设备未连接")
             return False
@@ -171,7 +172,14 @@ class BotCore:
                 pass
             
             # 等待启动完成
-            time.sleep(20)
+            # 优化为轮询检测
+            # time.sleep(20)
+            for _ in range(20):
+                if self.d(text="消息").exists:
+                    logger.info(f"{prefix} QQ主页已加载")
+                    break
+                time.sleep(1)
+            
             self.handle_popup()
             return True
         except Exception as e:
