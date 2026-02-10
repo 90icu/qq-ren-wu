@@ -1,6 +1,5 @@
 import time
 from loguru import logger
-import e_wai_huo_yue
 
 def execute(bot):
     """

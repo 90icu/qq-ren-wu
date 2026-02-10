@@ -1,7 +1,6 @@
 from loguru import logger
 import time
 import json
-import os
 
 def execute(bot):
     """
@@ -23,7 +22,7 @@ def execute(bot):
             
         friend_qq_str = config.get("friend_qq", "")
         if not friend_qq_str:
-            logger.info("【添加好友】配置中无 friend_qq，跳过任务")
+            logger.info("【添加好友】配置中无friend_qq，跳过任务")
             return True
             
         # 解析QQ号列表

@@ -57,6 +57,7 @@ def execute(bot):
                 is_found_exchange, sim_exchange = bot.click_image_template("立即兑换.png", threshold=0.8, prefix="【金币加速】", suppress_warning=True, return_details=True)
                 if is_found_exchange:
                      logger.info(f"【金币加速】检测到并点击了 '立即兑换.png' (相似度: {sim_exchange:.2f})，提前结束等待")
+                     time.sleep(2) # 点击立即兑换之后等待2秒再结束
                      clicked_skip = True
                      clicked_exchange = True
                      break

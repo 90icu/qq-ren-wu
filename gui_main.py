@@ -8,7 +8,6 @@ from emulator_manager import EmulatorManager
 from bot_core import BotCore
 import os
 import sys
-import subprocess
 import cv2
 from PIL import Image, ImageTk
 import numpy as np
@@ -140,8 +139,6 @@ class AutomationGUI:
         self.btn_start = ttk.Button(toolbar, text="执行全部任务", command=self.start_selected, state=tk.DISABLED)
         self.btn_start.pack(side=tk.LEFT, padx=5, ipadx=20)
         
-        # 调试功能
-        ttk.Button(toolbar, text="添加好友(调试)", command=lambda: self.run_specific_task_click("添加好友")).pack(side=tk.LEFT, padx=20)
         
         # 任务进度展示区域
         self.setup_progress_ui(top_frame)
@@ -857,28 +854,23 @@ class AutomationGUI:
             bot = BotCore(serial, self.pkg_name, image_callback=self.update_image_recognition, task_status_callback=status_callback)
             
             # 传递回调函数到 bot (用于添加好友任务)
-            if specific_task_name == "添加好友":
-                bot.gui_callback = self.update_friend_add_status
+            # 无论是执行单个任务还是全部任务，都应该注入这个回调，以防任务列表中包含"添加好友"
+            bot.gui_callback = self.update_friend_add_status
 
             bot.register_stop_event(stop_event)
             
             if bot.connect():
                 if stop_event.is_set(): return
                 
-                if stop_event.is_set(): return
-                
-                if stop_event.is_set(): return
-                
-                if stop_event.is_set(): return
                 # 传入特定任务名称
                 bot.perform_task(target_task_name=specific_task_name)
                 
                 logger.info(f"[{index}] 自动化任务完成")
 
-                # 如果是执行全部任务，完成后自动刷新进度
-                if specific_task_name is None and not stop_event.is_set():
-                     logger.info(f"[{index}] 全任务流程结束，开始自动刷新进度...")
-                     bot.refresh_task_progress()
+                # 如果是执行全部任务，完成后自动刷新进度 (已禁用)
+                # if specific_task_name is None and not stop_event.is_set():
+                #      logger.info(f"[{index}] 全任务流程结束，开始自动刷新进度...")
+                #      bot.refresh_task_progress()
             
         except Exception as e:
             logger.error(f"[{index}] 任务异常: {e}")

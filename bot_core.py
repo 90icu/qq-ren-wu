@@ -1,12 +1,12 @@
 import sys
 import uiautomator2 as u2
 import time
-import cv2
-import numpy as np
 from loguru import logger
 import os
 import importlib
 import e_wai_huo_yue
+import cv2
+import numpy as np
 
 
 # 配置 Loguru 格式
@@ -19,8 +19,6 @@ if __name__ == "__main__":
         format="{time:HH:mm:ss} | {level: <8} | {message}",
         level="INFO"
     )
-
-import subprocess
 
 class DeviceDisconnectedError(Exception):
     """设备断开连接异常"""
@@ -188,7 +186,7 @@ class BotCore:
 
     def login_qq(self, username, password):
         logger.info("假设已登录，跳过登录步骤")
-        pass
+        return True
 
     def restart_qq(self, prefix=""):
         """
@@ -282,11 +280,22 @@ class BotCore:
 
         last_task_skipped = False
         just_restarted = False # 标记是否刚刚重启过 QQ
+        any_task_failed = False # 标记是否有任务执行失败（用于决定是否需要刷新进度）
 
         try:
             for module, task_name in tasks_to_run:
+                # 如果是执行全部任务，且即将执行“添加好友”
+                if target_task_name is None and task_name == "添加好友":
+                    # 根据用户需求：如果每个任务都执行成功，就不要再执行刷新任务进度的功能了
+                    if any_task_failed:
+                        logger.info("检测到之前有任务执行失败，在执行【添加好友】前刷新任务进度...")
+                        self.refresh_task_progress()
+                    else:
+                        logger.info("所有前置任务均执行成功，跳过刷新任务进度，直接执行【添加好友】")
+
                 if not self.check_alive(): 
                     self.update_task_status(task_name, "failed")
+                    any_task_failed = True
                     raise DeviceDisconnectedError("设备连接已断开")
                 
                 # 标记为执行中
@@ -337,6 +346,7 @@ class BotCore:
                     if not self.reset_app_state():
                         logger.error(f"【{task_name}】重置应用状态失败，跳过此任务")
                         self.update_task_status(task_name, "failed")
+                        any_task_failed = True
                         last_task_skipped = False
                         just_restarted = False
                         continue
@@ -352,6 +362,7 @@ class BotCore:
                      self.update_task_status(task_name, "success")
                 else:
                      self.update_task_status(task_name, "failed")
+                     any_task_failed = True
                 
                 # 更新 last_task_skipped 状态，依据任务执行过程中是否标记了 skipped
                 last_task_skipped = self.current_task_skipped
