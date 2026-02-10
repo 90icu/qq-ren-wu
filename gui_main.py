@@ -202,6 +202,33 @@ class AutomationGUI:
         if self.emu_mgr:
             self.refresh_list_loop()
 
+    def update_friend_add_status(self, qq_number, status_text, status_type="pending"):
+        """
+        更新特定QQ号的添加好友状态 (线程安全)
+        status_type: pending(灰), processing(蓝), success(绿), failed(红)
+        """
+        def _update():
+            # 确保 self.friend_status_widgets 存在
+            if not hasattr(self, "friend_status_widgets"):
+                return
+
+            for item in self.friend_status_widgets:
+                if item["qq"] == str(qq_number):
+                    lbl = item["label"]
+                    lbl.config(text=status_text)
+                    
+                    if status_type == "processing":
+                        lbl.config(foreground="#0000FF") # 蓝色
+                    elif status_type == "success":
+                        lbl.config(foreground="#008000") # 绿色
+                    elif status_type == "failed":
+                        lbl.config(foreground="#FF0000") # 红色
+                    else:
+                        lbl.config(foreground="#808080") # 灰色
+                    break
+        
+        self.root.after(0, _update)
+
     def setup_progress_ui(self, parent):
         """
         初始化任务进度展示区域
@@ -212,7 +239,8 @@ class AutomationGUI:
         
         # 内部使用 grid 布局
         self.task_status_widgets = {} # task_name -> status_label
-        
+        self.friend_status_widgets = [] # 存储添加好友任务的子状态控件
+
         try:
             # 获取任务列表
             temp_bot = BotCore(None)
@@ -226,19 +254,21 @@ class AutomationGUI:
             style.configure("Success.Status.TLabel", foreground="#008000") # 绿色
             style.configure("Failed.Status.TLabel", foreground="#FF0000")  # 红色
             
-            # 创建网格
-            # 每行显示 6 个任务，每个任务占用一格 (TaskName: Status)
-            cols_per_row = 6
-            
-            # 过滤掉额外活跃(虽然 BotCore 已过滤，再保险一次)
+            # 分离任务：普通任务 和 添加好友任务
             filtered_list = [item for item in task_list if item[0] != "额外活跃"]
+            common_tasks = [t for t in filtered_list if t[0] != "添加好友"]
+            friend_task = next((t for t in filtered_list if t[0] == "添加好友"), None)
             
-            for i, (task_name, _) in enumerate(filtered_list):
+            # 1. 普通任务区域 (Grid 布局，每行 6 列)
+            common_frame = ttk.Frame(progress_group)
+            common_frame.pack(fill=tk.X, padx=5, pady=2)
+            
+            cols_per_row = 6
+            for i, (task_name, _) in enumerate(common_tasks):
                 row = i // cols_per_row
                 col = i % cols_per_row
                 
-                # 每个单元格是一个小 Frame
-                cell_frame = ttk.Frame(progress_group, padding=2)
+                cell_frame = ttk.Frame(common_frame, padding=2)
                 cell_frame.grid(row=row, column=col, sticky="w", padx=10, pady=2)
                 
                 # 任务名
@@ -250,6 +280,52 @@ class AutomationGUI:
                 lbl_status.pack(side=tk.LEFT, padx=(5, 0))
                 
                 self.task_status_widgets[task_name] = lbl_status
+                
+            # 2. 添加好友任务区域 (单独一行，Grid 布局，动态列数)
+            if friend_task:
+                # 添加分隔线 (可选，视视觉效果而定，这里先不加或者加个小的 frame 隔开)
+                # sep = ttk.Separator(progress_group, orient=tk.HORIZONTAL)
+                # sep.pack(fill=tk.X, padx=5, pady=5)
+                
+                friend_frame = ttk.Frame(progress_group)
+                friend_frame.pack(fill=tk.X, padx=5, pady=2) # pady=2 与 common_frame 一致
+                
+                # 第一列：标题
+                f_cell_title = ttk.Frame(friend_frame)
+                f_cell_title.grid(row=0, column=0, sticky="w", padx=10, pady=2)
+                ttk.Label(f_cell_title, text="添加好友:", font=("微软雅黑", 9, "bold")).pack()
+                
+                # 注册一个空的 task_status_widgets 以兼容通用更新逻辑
+                self.task_status_widgets["添加好友"] = ttk.Label(friend_frame, text="")
+                
+                # 读取配置中的 QQ
+                friend_qq_str = self.config.get("friend_qq", "")
+                if friend_qq_str:
+                    friend_qq_list = [q.strip() for q in friend_qq_str.replace("，", ",").split(",") if q.strip()]
+                else:
+                    friend_qq_list = []
+                
+                display_list = friend_qq_list[:3] # 最多3个
+                
+                if not display_list:
+                    # 未配置
+                    f_cell = ttk.Frame(friend_frame)
+                    f_cell.grid(row=0, column=1, sticky="w", padx=10, pady=2)
+                    lbl = ttk.Label(f_cell, text="未配置QQ", style="Pending.Status.TLabel")
+                    lbl.pack()
+                else:
+                    # 后续列：QQ状态
+                    for j, qq in enumerate(display_list):
+                        f_cell = ttk.Frame(friend_frame)
+                        f_cell.grid(row=0, column=j+1, sticky="w", padx=20, pady=2) # 较大的间距
+                        
+                        # 显示: QQ号 状态
+                        ttk.Label(f_cell, text=qq, font=("微软雅黑", 9, "bold"), foreground="#666666").pack(side=tk.LEFT)
+                        
+                        lbl_status = ttk.Label(f_cell, text="未执行", style="Pending.Status.TLabel", font=("微软雅黑", 9))
+                        lbl_status.pack(side=tk.LEFT, padx=(5, 0))
+                        
+                        self.friend_status_widgets.append({"qq": qq, "label": lbl_status})
                 
         except Exception as e:
             logger.error(f"初始化进度UI失败: {e}")
@@ -779,6 +855,11 @@ class AutomationGUI:
                 self.update_task_status_ui(t_name, status)
             
             bot = BotCore(serial, self.pkg_name, image_callback=self.update_image_recognition, task_status_callback=status_callback)
+            
+            # 传递回调函数到 bot (用于添加好友任务)
+            if specific_task_name == "添加好友":
+                bot.gui_callback = self.update_friend_add_status
+
             bot.register_stop_event(stop_event)
             
             if bot.connect():
@@ -803,6 +884,12 @@ class AutomationGUI:
             logger.error(f"[{index}] 任务异常: {e}")
         finally:
             # 清理
+            try:
+                if 'bot' in locals() and hasattr(bot, 'gui_callback'):
+                    bot.gui_callback = None
+            except:
+                pass
+
             if index in self.running_tasks:
                 del self.running_tasks[index]
             if index in self.stop_events:
